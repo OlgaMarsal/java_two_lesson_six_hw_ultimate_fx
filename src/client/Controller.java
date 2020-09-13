@@ -1,32 +1,38 @@
 package client;
 
+import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
+import javafx.scene.control.ListView;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.HBox;
+
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.ResourceBundle;
 
-public class Controller implements Initializable {
+public class Controller implements Initializable{
     @FXML
-    TextField tfMessage;
+    TextField msgField;
 
     @FXML
     TextArea textArea;
 
     @FXML
-    HBox topPanel;
+    HBox upperPanel;
 
     @FXML
-    HBox botPanel;
+    HBox bottomPanel;
 
     @FXML
     TextField tfLogin;
@@ -34,91 +40,123 @@ public class Controller implements Initializable {
     @FXML
     PasswordField pfPassword;
 
+    @FXML
+    ListView<String> clientsList;
+
 
     Socket socket;
     DataInputStream in;
     DataOutputStream out;
 
-    final String IP = "Localhost";
+    final String IP_ADDRESS = "localhost";
     final int PORT = 6666;
 
-    boolean isAuthorized;
+    private boolean isAuthorized;
 
-    //для удобства, сетторы хорошо работают с полями
-    public void setAuthorized(boolean isAuthorized) {
-        this.isAuthorized = isAuthorized;
-        if (!isAuthorized) {
-            topPanel.setVisible(true);
-            topPanel.setManaged(true);
-            botPanel.setVisible(false);
-            botPanel.setManaged(false);
-        } else {
-            topPanel.setVisible(false);
-            topPanel.setManaged(false);
-            botPanel.setVisible(true);
-            botPanel.setManaged(true);
-        }
-    }
 
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
+        setAuthorized(false);
+    }
+
+
+    public void setAuthorized(boolean isAuthorized) {
+        this.isAuthorized = isAuthorized;
+        if (!isAuthorized) {
+            upperPanel.setVisible(true);
+            upperPanel.setManaged(true);
+            bottomPanel.setVisible(false);
+            bottomPanel.setManaged(false);
+            clientsList.setVisible(false);
+            clientsList.setManaged(false);
+        } else {
+            upperPanel.setVisible(false);
+            upperPanel.setManaged(false);
+            bottomPanel.setVisible(true);
+            bottomPanel.setManaged(true);
+            clientsList.setVisible(true);
+            clientsList.setManaged(true);
+        }
+    }
+
+    public void connect(){
         try {
-            socket = new Socket(IP, PORT);
+            socket = new Socket(IP_ADDRESS, PORT);
             in = new DataInputStream(socket.getInputStream());
             out = new DataOutputStream(socket.getOutputStream());
             setAuthorized(false);
-            // В этом потоке слушаем сервер
-            new Thread(new Runnable() {
+
+
+            Thread thread = new Thread(new Runnable() {
                 @Override
                 public void run() {
                     try {
                         while (true) {
                             String str = in.readUTF();
-                            if (str.startsWith("/authOK")) {
-                                setAuthorized(true);
-                                break; //выхожим из цикла авторизации
+                            if (str.startsWith("/authok")) {
+                                Controller.this.setAuthorized(true);
+                                break;
                             } else {
                                 textArea.appendText(str + "\n");
                             }
                         }
                         while (true) {
                             String str = in.readUTF();
-                            if (str.equals("/server closed")) break; //для закрытия сокетов на стороне клиента
-                            textArea.appendText(str + "\n");
+                            if (str.startsWith("/")) {
+                                if (str.equals("/serverclosed")) break;
+                                if (str.startsWith("/clientslist ")) {
+                                    String[] tokens = str.split(" ");
+
+                                    Platform.runLater(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            clientsList.getItems().clear();
+                                            for (int i = 1; i < tokens.length; i++) {
+                                                clientsList.getItems().add(tokens[i]);
+                                            }
+                                        }
+                                    });
+                                }
+                            } else {
+                                textArea.appendText(str + "\n");
+                            }
                         }
                     } catch (IOException e) {
-                        System.out.println("Mori help");
                         e.printStackTrace();
                     } finally {
                         try {
                             socket.close();
                         } catch (IOException e) {
                             e.printStackTrace();
-                            System.out.println("Mori help 2");
                         }
                         Controller.this.setAuthorized(false);
+                        textArea.clear();
                     }
                 }
-            }).start();
+            });
+            thread.setDaemon(true);
+            thread.start();
         } catch (IOException e) {
             e.printStackTrace();
-            System.out.println("Mori help 3");
         }
     }
 
-    public void sendMessage() {
+
+    public void sendMsg() {
         try {
-            out.writeUTF(tfMessage.getText());
-            tfMessage.clear();
-            tfMessage.requestFocus();
+            out.writeUTF(msgField.getText());
+            msgField.clear();
+            msgField.requestFocus();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    public void toAuth() {
-
+    public void tryToAuth(){
+        if(socket == null || socket.isClosed()) {
+            connect();
+        }
         try {
             out.writeUTF("/auth " + tfLogin.getText() + " " + pfPassword.getText());
             tfLogin.clear();
@@ -126,5 +164,9 @@ public class Controller implements Initializable {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public void addUser() {
+        System.out.println("Registration");
     }
 }

@@ -1,8 +1,7 @@
 package server;
 
-public class MainServer {
+public class Main {
     public static void main(String[] args) {
-        new server.Server();
-
+        new Server();
     }
 }

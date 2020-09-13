@@ -1,41 +1,52 @@
 package server;
 
-import server.AuthService;
+import com.sun.tools.javac.file.SymbolArchive;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.Socket;
 
 public class ClientHandler {
-    private server.Server server;
+    private Server server;
     private Socket socket;
-    private DataInputStream in;
     private DataOutputStream out;
+    private DataInputStream in;
     private String nick;
 
-    public ClientHandler(server.Server server, Socket socket) {
+    public String getNick(){
+        return nick;
+    }
+
+    public ClientHandler(Server server, Socket socket) {
         try {
-            this.server = server;
             this.socket = socket;
-            this.in = new DataInputStream(socket.getInputStream()); // socket.getInputStream() - это чтение потока данных
+            this.server = server;
+            this.in = new DataInputStream(socket.getInputStream());
             this.out = new DataOutputStream(socket.getOutputStream());
 
-//            BufferedReader br = new BufferedReader(new InputStreamReader(socket.getInputStream())); - можно
-// использовать для потока данных, но вот в каких случаях?
+
+
             new Thread(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        //цикл авторизации
+                        // цикл авторизации
                         while (true) {
-                            String msg = in.readUTF(); // читаем сообщение от клиента
-                            if (msg.startsWith("/auth")) { // /auth login pass
-                                String[] tokens = msg.split(" "); //разбиваем данные
-                                String nickname = AuthService.getNickByLoginAndPass(tokens[1], tokens[2]); //и запрашиваем по логину и паролю
+                            String str = in.readUTF();
+                            if (str.startsWith("/auth")) {
+                                String[] tokens = str.split(" ");
+                                String nickname = AuthService.getNickByLoginAndPass(tokens[1], tokens[2]);
                                 if (nickname != null) {
-                                    nick = nickname;
-                                    server.subscribe(ClientHandler.this); //подписываем на рассылку
-                                    ClientHandler.this.sendMsg(nick + " in the Chat");
-                                    break;
+                                    if (!server.isNickBusy(nickname)) {
+                                        sendMsg("/authok");
+                                        nick = nickname;
+                                        server.subscribe(ClientHandler.this);
+                                        ClientHandler.this.sendMsg(nick + " in the Chat");
+                                        break;
+                                    } else {
+                                        ClientHandler.this.sendMsg("Nick is busy.");
+                                    }
                                 } else {
                                     ClientHandler.this.sendMsg("Check your Login/Password");
                                 }
@@ -43,16 +54,22 @@ public class ClientHandler {
                         }
                         // цикл обзения с клиентом
                         while (true) {
-                            String msg = in.readUTF(); // читаем
-                            if (msg.equals("/end")) {
-                                out.writeUTF("/server closed");
-                                break;
+                            String str = in.readUTF();
+                            if (str.startsWith("/")) {
+                                if (str.equals("/end")) {
+                                    out.writeUTF("/serverclosed");
+                                    break;
+                                }
+                                if (str.startsWith("/w ")) {
+                                    String[] tokens = str.split(" ", 3);
+                                    server.uniCast(ClientHandler.this, tokens[1], tokens[2]);
+                                }
+                            } else {
+                                server.broadcastMsg(nick + ": " + str);
+                                System.out.println("Client: " + str);
                             }
-                            server.broadCastMsg(msg);
-                            System.out.println("Client: " + msg);
-                            // out.writeUTF("echo " + message); // печатаем полученное сообщение
                         }
-                    } catch (Exception e) {
+                    } catch (IOException e) {
                         e.printStackTrace();
                     } finally {
                         try {
@@ -70,7 +87,7 @@ public class ClientHandler {
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
-                        server.unsubscribe(server.ClientHandler.this);
+                        server.unsubscribe(ClientHandler.this);
                     }
                 }
             }).start();
@@ -79,8 +96,7 @@ public class ClientHandler {
         }
     }
 
-
-    public void sendMsg (String msg) {
+    public void sendMsg(String msg) {
         try {
             out.writeUTF(msg);
         } catch (IOException e) {

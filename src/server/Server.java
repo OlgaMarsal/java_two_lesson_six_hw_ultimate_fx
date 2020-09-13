@@ -10,20 +10,18 @@ import java.util.Vector;
 
 public class Server {
 
-    // Vector это как ArrayLisr, но только для многопоточности, так как он синхронизированный
     private Vector<ClientHandler> clients;
 
     public Server() {
         clients = new Vector<>();
-        ServerSocket server = null; // иницилизация локальной перемннной, так что пишу нолик
+        ServerSocket server = null;
         Socket socket = null;
         try {
             AuthService.connect();
-            // создали сервер и выюрали ему порт
             server = new ServerSocket(6666);
             System.out.println("Server is working...");
             while (true) {
-                socket = server.accept(); // точка подлючения со строны сервера или розетка (информация - кто подключился с какого IP, port)
+                socket = server.accept();
                 System.out.println("Client was added");
                 subscribe(new server.ClientHandler(this, socket));
             }
@@ -31,12 +29,12 @@ public class Server {
             e.printStackTrace();
         } finally {
             try {
-                socket.close(); // закрываем розетку
+                socket.close();
             } catch (IOException e) {
                 e.printStackTrace();
             }
             try {
-                server.close();  // закрываем сервер
+                server.close();
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -50,13 +48,13 @@ public class Server {
         }
     }
 
-    //подписываем клиента, который вышел из сети
+
     public void subscribe(server.ClientHandler clientHandler) {
         clients.add((clientHandler));
 
     }
 
-    //отписываем клиента, который вышел из сети
+
     public void unsubscribe(server.ClientHandler clientHandler) {
         clients.remove((clientHandler));
     }
