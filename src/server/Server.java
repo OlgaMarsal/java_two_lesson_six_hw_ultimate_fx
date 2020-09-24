@@ -18,7 +18,7 @@ public class Server {
         Socket socket = null;
         try {
             AuthService.connect();
-            server = new ServerSocket(6666);
+            server = new ServerSocket(8189);
             System.out.println("Server is working...");
             while (true) {
                 socket = server.accept();

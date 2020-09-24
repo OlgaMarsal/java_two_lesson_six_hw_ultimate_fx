@@ -1,58 +1,60 @@
 package server;
 
-import com.sun.tools.javac.file.SymbolArchive;
-
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
 
-public class ClientHandler {
-    private Server server;
+class ClientHandler {
+
     private Socket socket;
-    private DataOutputStream out;
     private DataInputStream in;
+    private DataOutputStream out;
+    private Main server;
     private String nick;
 
-    public String getNick(){
+    String getNick() {
         return nick;
     }
 
-    public ClientHandler(Server server, Socket socket) {
+    boolean checkBlackList(String _blacklist_nick) {
+        int nickId = AuthService.getIdByNick(_blacklist_nick);
+        int blacklistId = AuthService.getBlackListUserById(nickId);
+        return blacklistId > 0;
+    }
+
+    public ClientHandler(Socket socket, Main server) {
         try {
             this.socket = socket;
             this.server = server;
             this.in = new DataInputStream(socket.getInputStream());
             this.out = new DataOutputStream(socket.getOutputStream());
 
-
-
             new Thread(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        // цикл авторизации
                         while (true) {
                             String str = in.readUTF();
                             if (str.startsWith("/auth")) {
                                 String[] tokens = str.split(" ");
-                                String nickname = AuthService.getNickByLoginAndPass(tokens[1], tokens[2]);
-                                if (nickname != null) {
-                                    if (!server.isNickBusy(nickname)) {
+                                String newNick = AuthService.getNickByLoginAndPass(tokens[1], tokens[2]);
+                                if (newNick != null) {
+                                    if (!server.isNickBusy(newNick)) {
                                         sendMsg("/authok");
-                                        nick = nickname;
+                                        nick = newNick;
                                         server.subscribe(ClientHandler.this);
-                                        ClientHandler.this.sendMsg(nick + " in the Chat");
                                         break;
                                     } else {
-                                        ClientHandler.this.sendMsg("Nick is busy.");
+                                        sendMsg("Учетная запись уже используется");
                                     }
                                 } else {
-                                    ClientHandler.this.sendMsg("Check your Login/Password");
+                                    sendMsg("Неверный логин/пароль");
                                 }
                             }
+                            server.broadcastMsg(ClientHandler.this, str);
                         }
-                        // цикл обзения с клиентом
+
                         while (true) {
                             String str = in.readUTF();
                             if (str.startsWith("/")) {
@@ -60,13 +62,22 @@ public class ClientHandler {
                                     out.writeUTF("/serverclosed");
                                     break;
                                 }
-                                if (str.startsWith("/w ")) {
+                                if (str.startsWith("/w ")) { // /w nick3 lsdfhldf sdkfjhsdf wkerhwr
                                     String[] tokens = str.split(" ", 3);
-                                    server.uniCast(ClientHandler.this, tokens[1], tokens[2]);
+                                    //if(tokens.length > 3) {
+                                    //String m = str.substring(tokens[1].length() + 4);
+                                    server.sendPersonalMsg(ClientHandler.this, tokens[1], tokens[2]);
+                                }
+                                if (str.startsWith("/blacklist ")) {
+                                    String[] tokens = str.split(" ");
+
+                                    int nickId = AuthService.getIdByNick(nick);
+                                    int nicknameId = AuthService.getIdByNick(tokens[1]);
+                                    AuthService.addBlackListByNickAndNickName(nickId, nicknameId);
+                                    sendMsg("Вы добавили пользователя " + tokens[1] + " в черный список");
                                 }
                             } else {
-                                server.broadcastMsg(nick + ": " + str);
-                                System.out.println("Client: " + str);
+                                server.broadcastMsg(ClientHandler.this,nick + ": " + str);
                             }
                         }
                     } catch (IOException e) {
@@ -87,16 +98,17 @@ public class ClientHandler {
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
-                        server.unsubscribe(ClientHandler.this);
                     }
+                    server.unsubscribe(ClientHandler.this);
                 }
             }).start();
-        } catch (Exception e) {
+
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    public void sendMsg(String msg) {
+    void sendMsg(String msg) {
         try {
             out.writeUTF(msg);
         } catch (IOException e) {
